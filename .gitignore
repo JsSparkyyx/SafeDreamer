@@ -8,3 +8,4 @@ hj/*.pkl
 hj/*.mp4
 nominal_policy/
 safety_filter/
+server/

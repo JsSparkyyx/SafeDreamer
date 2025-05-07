@@ -114,12 +114,12 @@ dmc_vision:
 safe_gymnasium:
   steps: 1e6
   action_repeat: 2
-  size: [64, 64]
+  size: [128, 128]
   envs: 4
   train_ratio: 512
   video_pred_log: true
-  encoder: {mlp_keys: '$^', cnn_keys: 'image'}
-  decoder: {mlp_keys: '$^', cnn_keys: 'image'}
+  encoder: {mlp_keys: 'vector', cnn_keys: 'image'}
+  decoder: {mlp_keys: 'vector', cnn_keys: 'image'}
 
 crafter:
   task: crafter_reward
