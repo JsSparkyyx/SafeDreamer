@@ -4,6 +4,8 @@ import os
 import pathlib
 import sys
 
+# os.environ['PYOPENGL_PLATFORM'] = 'egl'
+os.environ["MUJOCO_GL"] = "egl"
 # os.environ["MUJOCO_GL"] = "osmesa"
 
 import numpy as np
@@ -20,7 +22,9 @@ from parallel import Parallel, Damy
 import torch
 from torch import nn
 from torch import distributions as torchd
-
+# python dreamer.py --configs safe_gymnasium --task sg_SafetyCarFormulaOne1Vision-v0 --logdir ./logdir/SafetyCarFormulaOne1Vision-v0
+# python dreamer.py --configs safe_gymnasium --task sg_SafetyCarFormulaOne1Vision-v0 --logdir ./logdir/SafetyCarFormulaOne128-v0
+# python dreamer.py --configs safe_gymnasium --task sg_SafetyCarGoal2Vision-v0 --logdir ./logdir/SafetyCarGoal2128-v0
 
 to_np = lambda x: x.detach().cpu().numpy()
 
@@ -153,7 +157,14 @@ def make_env(config, mode, id):
         )
         env = wrappers.NormalizeActions(env)
     elif suite == "sg":
-        import envs.safe_gymnasium as safe_gymnasium
+        import envs.safe_gymnasiumGoal as safe_gymnasium
+
+        env = safe_gymnasium.SafeGymnasium(
+            task, config.action_repeat, config.size, seed=config.seed + id
+        )
+        env = wrappers.NormalizeActions(env)
+    elif suite == "sgc":
+        import envs.safe_gymnasiumGoalCost as safe_gymnasium
 
         env = safe_gymnasium.SafeGymnasium(
             task, config.action_repeat, config.size, seed=config.seed + id
