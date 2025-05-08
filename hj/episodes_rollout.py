@@ -5,7 +5,7 @@ from formularone import SafeGymnasium
 import os
 import sys
 import ruamel.yaml as yaml
-sys.path.append("D:/Code/WashU/vision_project/dreamerv3-torch/")
+sys.path.append("/home/yyx/projects/SafeDreamer/dreamerv3-torch")
 from dreamer_nom import Dreamer
 import pathlib
 import argparse
@@ -46,12 +46,13 @@ agent = Dreamer(
         None,
     ).to(config.device)
 state_dict = torch.load("cost.pt")
-new_state_dict = {}
-for key in list(state_dict["agent_state_dict"].keys()):
-    if 'orig_mod.' in key:
-        deal_key = key.replace('_orig_mod.', '')
-        new_state_dict[deal_key] = state_dict["agent_state_dict"][key]
-agent.load_state_dict(new_state_dict)
+agent.load_state_dict(state_dict["agent_state_dict"])
+# new_state_dict = {}
+# for key in list(state_dict["agent_state_dict"].keys()):
+#     if 'orig_mod.' in key:
+#         deal_key = key.replace('_orig_mod.', '')
+#         new_state_dict[deal_key] = state_dict["agent_state_dict"][key]
+# agent.load_state_dict(new_state_dict)
 
 step, episode = 0, 0
 done = np.ones(1, bool)
