@@ -1,16 +1,16 @@
 import gymnasium as gym
 import torch, numpy as np, torch.nn as nn
-# import tianshou as ts
-from formularone_modifiedreward import SafeGymnasium
+import tianshou as ts
+from formularone import SafeGymnasium
 import os
 import sys
 import ruamel.yaml as yaml
-sys.path.append("dreamerv3-torch")
+sys.path.append("D:/Code/WashU/vision_project/dreamerv3-torch/")
 from dreamer_nom import Dreamer
 import pathlib
 import argparse
 import tools
-import cv2
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--configs", nargs="+")
 configs = yaml.safe_load(
@@ -45,7 +45,7 @@ agent = Dreamer(
         None,
         None,
     ).to(config.device)
-state_dict = torch.load("reaching.pt")
+state_dict = torch.load("cost.pt")
 new_state_dict = {}
 for key in list(state_dict["agent_state_dict"].keys()):
     if 'orig_mod.' in key:
@@ -88,32 +88,9 @@ for _ in trange(100):
     episode_embs = []
     for i in range(1000):
         obs, reward, done, info = train_envs.step(action[0])
-        
-#####
-        # for key, value in obs.items():
-        #     try:
-        #         print(f"{key}: shape = {value.shape}")
-        #     except AttributeError:
-        #         print(f"{key}: type = {type(value)}, value = {value}")
-                    # is_first: type = <class 'bool'>, value = False
-                    # image: shape = (128, 128, 3)
-                    # vector: shape = (40,)
-                    # is_terminal: type = <class 'bool'>, value = False
-                    # is_first: type = <class 'bool'>, value = False
-                    # image: shape = (128, 128, 3)
-                    # vector: shape = (40,)
-                    # is_terminal: type = <class 'bool'>, value = False
-        # import cv2
-        # image = obs["image"]
-        # cv2.imshow("Observation", cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-        # print(f"Reward: {reward}")
-        # cv2.waitKey(10)  # Required to refresh the window
-        # # train_envs.render()
-
-#####
         obs = {k: np.expand_dims(np.array(obs[k]),axis=0) for k in obs}
-        action, agent_state, embed = agent(obs, agent_state) #agent_state = ( latent , prev_action )
-        (latent, _) = agent_state ## latent contains h and z
+        action, agent_state, embed = agent(obs, agent_state)
+        (latent, _) = agent_state
         feat = agent._wm.dynamics.get_feat(latent)
         value = agent._task_behavior.value(feat).mode()
         feat = feat.detach().cpu().numpy()

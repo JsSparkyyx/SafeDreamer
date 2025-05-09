@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sys 
+sys.path.append("dreamerv3-torch")
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -19,8 +21,8 @@ class SafetyQDataset(Dataset):
             s, actions, costs = pickle.load(f)
         self.latents = s["latent"]
         self.embs = s["emb"]
-        self.values = s["value"]
         self.costs = costs
+
         
 
     def __len__(self):
@@ -29,9 +31,9 @@ class SafetyQDataset(Dataset):
     def __getitem__(self, idx):
         latent = {k:torch.tensor(self.latents[k][idx], dtype=torch.float32) for k in self.latents.keys()}
         embs = torch.tensor(self.embs[idx], dtype=torch.float32)
-        # value = torch.tensor(self.values[idx], dtype=torch.float32)
-        value = torch.tensor(self.costs[idx], dtype=torch.float32)
-        return latent, embs, value
+        costs = torch.tensor(self.costs[idx], dtype=torch.float32)
+        # print("costs",costs)
+        return latent, embs, costs
 
 # 2. Q-Network Definition
 # Q: (s, a) --> scalar. Input dim: state (4) concatenated with action (2) = 6.
@@ -69,7 +71,7 @@ def train_safety_q(q_net, target_net, dataloader, candidate_actions, agent,
     
     for epoch in range(num_epochs):
         epoch_loss = 0.0
-        torch.save(q_net.state_dict(), "hj.pt")
+        torch.save(q_net.state_dict(), f"hj/hj_checkpts/hj{epoch}.pt")
         for l, embs, h_s in tqdm(dataloader):
             embs = embs.to(device)
             l = {k: v.to(device) for k, v in l.items()}
@@ -77,7 +79,7 @@ def train_safety_q(q_net, target_net, dataloader, candidate_actions, agent,
             optimizer.zero_grad()
             
             # Current Q(s,a)
-            s = agent._wm.dynamics.get_feat(l)
+            s = agent._wm.dynamics.get_feat(l)##get current feat from l is latent (contains h and z)
             current_Q = q_net(s)  # shape (B,1)
             
             # # h(s)
@@ -120,6 +122,73 @@ def train_safety_q(q_net, target_net, dataloader, candidate_actions, agent,
         if (epoch + 1) % target_update_freq == 0:
             target_net.load_state_dict(q_net.state_dict())
             print("Target network updated.")
+            
+# 6. Visualization Function with Safe Policy Overlay
+# This function visualizes:
+# - The learned safety value function V(s) = maxₐ Q(s,a) as a heatmap.
+# - The safe policy as a vector field indicating the best candidate action at each grid point.
+def visualize_value_function_and_policy(q_net, candidate_actions, device,
+                                          obs_center=np.array([10, 11]),
+                                          grid_limits=(-30, 30), num_points=100,
+                                          quiver_step=2):  # set a smaller step for higher density
+    # Create a grid of x,y positions.
+    xs = np.linspace(grid_limits[0], grid_limits[1], num_points)
+    ys = np.linspace(grid_limits[0], grid_limits[1], num_points)
+    X, Y = np.meshgrid(xs, ys)
+    grid_points = np.stack([X.ravel(), Y.ravel()], axis=1)  # shape (num_points^2, 2)
+    
+    # Construct states: each state is [car_x, car_y, obs_center_x, obs_center_y]
+    obs_tile = np.tile(obs_center.reshape(1, 2), (grid_points.shape[0], 1))
+    s_grid = np.concatenate([grid_points, obs_tile], axis=1)  # (B, 4)
+    s_grid_tensor = torch.tensor(s_grid, dtype=torch.float32, device=device)
+    
+    B = s_grid_tensor.shape[0]
+    N_candidates = candidate_actions.shape[0]
+    
+    # Expand state to create input for each candidate action.
+    s_grid_expanded = s_grid_tensor.unsqueeze(1).expand(-1, N_candidates, -1)
+    candidate_actions_expanded = candidate_actions.unsqueeze(0).expand(B, -1, -1)
+    sa_grid = torch.cat([s_grid_expanded, candidate_actions_expanded], dim=2)
+    sa_grid_flat = sa_grid.reshape(-1, 6)
+    
+    q_net.eval()
+    with torch.no_grad():
+        Q_values_flat = q_net(sa_grid_flat)
+    Q_values = Q_values_flat.reshape(B, N_candidates)  # shape (B, N_candidates)
+    
+    # For each state, take the maximum Q value (value function) and get the index of the best candidate action.
+    V_values, best_indices = torch.max(Q_values, dim=1)  # V_values shape (B, 1); best_indices shape (B,)
+    V_values_grid = V_values.reshape(num_points, num_points).cpu().numpy()
+    
+    # Extract best candidate actions and reshape to grid.
+    safe_actions = candidate_actions[best_indices]  # shape (B, 2)
+    safe_actions_grid = safe_actions.reshape(num_points, num_points, 2).cpu().numpy()
+    
+    # Plot the value function as a heatmap.
+    plt.figure(figsize=(10, 8))
+    im = plt.imshow(V_values_grid, extent=(grid_limits[0], grid_limits[1],
+                                             grid_limits[0], grid_limits[1]),
+                    origin='lower', cmap='viridis', aspect='auto')
+    plt.colorbar(im, label="Safety Value V(s)")
+    plt.xlabel("Car X Position")
+    plt.ylabel("Car Y Position")
+    plt.title("Learned Hamilton–Jacobi Safety Value Function with Safe Policy")
+    
+    # Overlay the obstacle as a red circle.
+    obstacle_circle = plt.Circle((obs_center[0], obs_center[1]), 4.0, color='red',
+                                 fill=False, linewidth=2, label="Obstacle")
+    plt.gca().add_patch(obstacle_circle)
+    
+    # Downsample the grid for the vector field (quiver) to avoid clutter.
+    X_ds = X[::quiver_step, ::quiver_step]
+    Y_ds = Y[::quiver_step, ::quiver_step]
+    U = safe_actions_grid[::quiver_step, ::quiver_step, 0]
+    V = safe_actions_grid[::quiver_step, ::quiver_step, 1]
+    
+    # Overlay the safe policy as arrows (vector field).
+    # plt.quiver(X_ds, Y_ds, U, V, color='white', alpha=0.5, scale=20, width=0.005, label="Safe Policy")
+    plt.legend()
+    plt.show()
 
 
 
