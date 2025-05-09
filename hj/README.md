@@ -1,3 +1,5 @@
+Before running the experiments, you need to first edit the safe gymnasium to change the default resolution of the rendered image. You need to go to "[your safe gymnasium path]/safety_gymnasium/bases/underlying.py" and change line 107 to "vision_size = (128, 128)".
+
 Collect Episode Rollout:
 ```
 python episodes_rollout.py
